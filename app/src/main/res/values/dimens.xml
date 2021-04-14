@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="marker_size">20dp</dimen>
+    <dimen name="marker_size">30dp</dimen>
     <dimen name="_4dp">4dp</dimen>
     <dimen name="_16dp">16dp</dimen>
     <dimen name="_48dp">48dp</dimen>
