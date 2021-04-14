@@ -74,11 +74,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
     private lateinit var mapFragment: SupportMapFragment
 
     private var stores: List<Store> = Store.getStoreExampleList()
-    private var storeMarkers= ArrayMap<Marker, Store>()
+    private var storeMarkers = ArrayMap<Marker, Store>()
+    private var reverseStoreMarkers = ArrayMap<Int, Marker>()
     private var currentMarker: Marker? = null
 
     private lateinit var binding: ActivityMainBinding
     private var adapter: StoreAdapter? = null
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -143,8 +146,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
                 )
                 val title = infoWindow.findViewById<TextView>(R.id.title)
                 title.text = marker.title
-                val snippet = infoWindow.findViewById<TextView>(R.id.snippet)
-                snippet.text = marker.snippet
+//                val snippet = infoWindow.findViewById<TextView>(R.id.snippet)
+//                snippet.text = marker.snippet
                 return infoWindow
             }
         })
@@ -198,7 +201,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
         setupKeyboardEvent()
         adapter = StoreAdapter(stores, ::onStoreSuggestionClick)
         binding.rvStore.apply {
-            layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.VERTICAL, false)
+            layoutManager = LinearLayoutManager(
+                this@MainActivity,
+                LinearLayoutManager.VERTICAL,
+                false
+            )
             adapter = this@MainActivity.adapter
         }
 
@@ -256,6 +263,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
             )
             marker?.let {
                 storeMarkers.put(marker, store)
+                reverseStoreMarkers.put(store.id, marker)
             }
         }
     }
@@ -509,13 +517,17 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
     }
 
     private fun setupMyLocationButtonPosition(){
-        val locationButton= (findViewById<View>(Integer.parseInt("1")).parent as View).findViewById<View>(Integer.parseInt("2"))
+        val locationButton= (findViewById<View>(Integer.parseInt("1")).parent as View).findViewById<View>(
+            Integer.parseInt(
+                "2"
+            )
+        )
         val rlp=locationButton.layoutParams as (RelativeLayout.LayoutParams)
         // position on right bottom
         val marginRight = resources.getDimensionPixelSize(R.dimen._16dp)
         val marginTop = resources.getDimensionPixelSize(R.dimen._48dp)
 
-        rlp.setMargins(0, marginTop, marginRight,0);
+        rlp.setMargins(0, marginTop, marginRight, 0);
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -550,14 +562,23 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
     private fun setupKeyboardEvent() {
         KeyboardVisibilityEvent.setEventListener(this, object : KeyboardVisibilityEventListener {
             override fun onVisibilityChanged(isOpen: Boolean) {
-                   binding.btnConfirm.isVisible = !isOpen
-                   binding.rvStore.isVisible = isOpen && binding.edtSearch.text.isNotEmpty()
+                binding.btnConfirm.isVisible = !isOpen
+                binding.rvStore.isVisible = isOpen && binding.edtSearch.text.isNotEmpty()
             }
         })
     }
 
     private fun onStoreSuggestionClick(store: Store){
-        mMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(store.latitude, store.longitude), DEFAULT_ZOOM.toFloat()))
+        val marker = reverseStoreMarkers[store.id]
+        marker?.showInfoWindow()
+        mMap?.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                LatLng(
+                    store.latitude,
+                    store.longitude
+                ), DEFAULT_ZOOM.toFloat()
+            )
+        )
     }
 
     companion object {

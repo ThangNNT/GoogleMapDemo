@@ -9,12 +9,11 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:textColor="#ff000000"
+        android:textColor="#009788"
         android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/snippet"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textColor="#ff7f7f7f" />
+<!--    <TextView-->
+<!--        android:id="@+id/snippet"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:textColor="#ff7f7f7f" />-->
 </LinearLayout>
