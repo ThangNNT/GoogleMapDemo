@@ -2,23 +2,28 @@ package com.nnt.mapapidemo
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.DialogInterface
+import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.ArrayMap
 import android.util.Log
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
+import android.view.Window
+import android.view.inputmethod.InputMethodManager
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import androidx.core.view.isVisible
+import androidx.databinding.DataBindingUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -29,9 +34,20 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.*
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
+import com.nnt.mapapidemo.databinding.ActivityMainBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import net.yslibrary.android.keyboardvisibilityevent.KeyboardVisibilityEvent
+import net.yslibrary.android.keyboardvisibilityevent.KeyboardVisibilityEventListener
+import kotlin.coroutines.CoroutineContext
 
 
-class MainActivity : AppCompatActivity(), OnMapReadyCallback {
+class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
+
+    override val coroutineContext: CoroutineContext = Dispatchers.Main
+
     private var mMap: GoogleMap?=null
     private var cameraPosition: CameraPosition? = null
 
@@ -55,13 +71,21 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private var likelyPlaceAttributions: Array<List<*>?> = arrayOfNulls(0)
     private var likelyPlaceLatLngs: Array<LatLng?> = arrayOfNulls(0)
 
+    private lateinit var mapFragment: SupportMapFragment
+
     private var stores: List<Store> = Store.getStoreExampleList()
     private var storeMarkers= ArrayMap<Marker, Store>()
     private var currentMarker: Marker? = null
 
+    private lateinit var binding: ActivityMainBinding
+    private var adapter: StoreAdapter? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        window?.requestFeature(Window.FEATURE_ACTION_BAR)
+        supportActionBar?.hide()
+
+        binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
 
         if (savedInstanceState != null) {
             lastKnownLocation = savedInstanceState.getParcelable(KEY_LOCATION)
@@ -69,7 +93,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             currentLatLng = LatLng(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude)
         }
 
-        val mapFragment: SupportMapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
+        mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
 
         Places.initialize(applicationContext, getString(R.string.google_maps_key))
@@ -78,7 +102,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         // Construct a FusedLocationProviderClient.
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
 
-        val btnConfirm = findViewById<Button>(R.id.btn_confirm)
+        val btnConfirm = binding.btnConfirm
         btnConfirm.setOnClickListener {
             if(currentLatLng==null){
                 Toast.makeText(this, "Vui lòng chọn địa chỉ", Toast.LENGTH_SHORT).show()
@@ -97,6 +121,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     @SuppressLint("PotentialBehaviorOverride")
     override fun onMapReady(googleMap: GoogleMap?) {
         this.mMap = googleMap
+
+        //setup google map padding
+        val marginRight = resources.getDimensionPixelSize(R.dimen._4dp)
+        val marginTop = resources.getDimensionPixelSize(R.dimen._48dp)
+        mMap?.setPadding(marginRight, marginTop, marginRight, 0)
 
         // Use a custom info window adapter to handle multiple lines of text in the
         // info window contents.
@@ -119,6 +148,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 return infoWindow
             }
         })
+
+        //setupRV
+        setupSearchFeature()
 
         // Prompt the user for permission.
         getLocationPermission()
@@ -160,6 +192,55 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             return@setOnMyLocationButtonClickListener true
         }
 
+    }
+
+    private fun setupSearchFeature(){
+        setupKeyboardEvent()
+        adapter = StoreAdapter(stores, ::onStoreSuggestionClick)
+        binding.rvStore.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.VERTICAL, false)
+            adapter = this@MainActivity.adapter
+        }
+
+        val watcher = object : TextWatcher {
+            private var searchFor = ""
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val searchText = s.toString().trim()
+                if (searchText == searchFor)
+                    return
+
+                searchFor = searchText
+
+                launch {
+                    delay(300)  //debounce timeOut
+                    if (searchText != searchFor)
+                        return@launch
+
+                    // do our magic here
+                    val shouldShowRv = adapter?.filter(searchFor)
+                    if(shouldShowRv==true){
+                        binding.rvStore.visibility = View.VISIBLE
+                    }
+                    else {
+                        binding.rvStore.visibility = View.GONE
+                    }
+                }
+            }
+
+            override fun afterTextChanged(s: Editable?) = Unit
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+        }
+        binding.edtSearch.addTextChangedListener(watcher)
+        binding.edtSearch.setOnKeyListener(object : View.OnKeyListener {
+            override fun onKey(v: View?, keyCode: Int, event: KeyEvent?): Boolean {
+                if (event?.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_ENTER) { // Perform action on key press
+                    hideKeyboard()
+                    return true
+                }
+                return false
+            }
+        })
     }
     private fun showStoreInfo(store: Store){
         StoreInfoDialog.newInstance(store).show(supportFragmentManager, StoreInfoDialog.TAG)
@@ -425,6 +506,57 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             outState.putParcelable(KEY_LOCATION, lastKnownLocation)
         }
         super.onSaveInstanceState(outState)
+    }
+
+    private fun setupMyLocationButtonPosition(){
+        val locationButton= (findViewById<View>(Integer.parseInt("1")).parent as View).findViewById<View>(Integer.parseInt("2"))
+        val rlp=locationButton.layoutParams as (RelativeLayout.LayoutParams)
+        // position on right bottom
+        val marginRight = resources.getDimensionPixelSize(R.dimen._16dp)
+        val marginTop = resources.getDimensionPixelSize(R.dimen._48dp)
+
+        rlp.setMargins(0, marginTop, marginRight,0);
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val view: View? = currentFocus
+        val ret = super.dispatchTouchEvent(event)
+        if (view is EditText) {
+            currentFocus?.let {
+                val w: View = it
+                val scrcoords = IntArray(2)
+                w.getLocationOnScreen(scrcoords)
+
+                val x: Float = event.rawX + w.left - scrcoords[0]
+                val y: Float = event.rawY + w.top - scrcoords[1]
+                if (event.action == MotionEvent.ACTION_UP
+                    && (x < w.left || x >= w.right || y < w.top || y > w.bottom)
+                ) {
+                    hideKeyboard()
+                }
+            }
+        }
+        return ret
+    }
+
+    private fun hideKeyboard(){
+        val view = this.currentFocus
+        view?.let {
+            val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            inputMethodManager.hideSoftInputFromWindow(it.windowToken, 0)
+        }
+    }
+
+    private fun setupKeyboardEvent() {
+        KeyboardVisibilityEvent.setEventListener(this, object : KeyboardVisibilityEventListener {
+            override fun onVisibilityChanged(isOpen: Boolean) {
+                   binding.btnConfirm.isVisible = !isOpen
+            }
+        })
+    }
+
+    private fun onStoreSuggestionClick(store: Store){
+        mMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(store.latitude, store.longitude), DEFAULT_ZOOM.toFloat()))
     }
 
     companion object {
