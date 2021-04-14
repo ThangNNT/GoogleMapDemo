@@ -2,21 +2,30 @@ package com.nnt.mapapidemo
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
 import android.content.DialogInterface
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.location.Location
 import android.os.Bundle
+import android.util.ArrayMap
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -24,10 +33,7 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.GoogleMap.OnMarkerDragListener
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.Marker
-import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.*
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FindCurrentPlaceRequest
@@ -58,6 +64,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private var likelyPlaceAttributions: Array<List<*>?> = arrayOfNulls(0)
     private var likelyPlaceLatLngs: Array<LatLng?> = arrayOfNulls(0)
 
+    private var stores: List<Store> = Store.getStoreExampleList()
+    private var storeMarkers= ArrayMap<Marker, Store>()
+    private var currentMarker: Marker? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -83,11 +93,17 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 Toast.makeText(this, "Vui lòng chọn địa chỉ", Toast.LENGTH_SHORT).show()
             }
             else {
-                Toast.makeText(this, "Vĩ độ: ${currentLatLng!!.latitude}, Kinh độ: ${currentLatLng!!.longitude}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    "Vĩ độ: ${currentLatLng!!.latitude}, Kinh độ: ${currentLatLng!!.longitude}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                Log.d(TAG, "" + currentLatLng!!.latitude + ", " + currentLatLng!!.longitude)
             }
         }
     }
 
+    @SuppressLint("PotentialBehaviorOverride")
     override fun onMapReady(googleMap: GoogleMap?) {
         this.mMap = googleMap
 
@@ -101,8 +117,10 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
             override fun getInfoContents(marker: Marker): View {
                 // Inflate the layouts for the info window, title and snippet.
-                val infoWindow = layoutInflater.inflate(R.layout.custom_info_contents,
-                    findViewById<FrameLayout>(R.id.map), false)
+                val infoWindow = layoutInflater.inflate(
+                    R.layout.custom_info_contents,
+                    findViewById<FrameLayout>(R.id.map), false
+                )
                 val title = infoWindow.findViewById<TextView>(R.id.title)
                 title.text = marker.title
                 val snippet = infoWindow.findViewById<TextView>(R.id.snippet)
@@ -120,7 +138,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         // Get the current location of the device and set the position of the map.
         getDeviceLocation()
 
-        mMap?.setOnMarkerDragListener(object : OnMarkerDragListener{
+        setupStoreMarker()
+
+        mMap?.setOnMarkerDragListener(object : OnMarkerDragListener {
             override fun onMarkerDragStart(p0: Marker?) {
 
             }
@@ -135,6 +155,45 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
         })
 
+        mMap?.setOnMarkerClickListener {
+                val store = storeMarkers[it]
+                store?.let {
+                    showStoreInfo(store)
+                }
+            return@setOnMarkerClickListener true
+        }
+
+    }
+    private fun showStoreInfo(store: Store){
+        StoreInfoDialog.newInstance(store).show(supportFragmentManager, StoreInfoDialog.TAG)
+    }
+
+    private fun setupStoreMarker(){
+        for (store in stores){
+            val marker = mMap?.addMarker(
+                MarkerOptions()
+                    .title(store.name)
+                    .icon(getBitmapDescriptor())
+                    .position(LatLng(store.latitude, store.longitude))
+            )
+            marker?.let {
+                storeMarkers.put(marker, store)
+            }
+        }
+    }
+
+    private fun getBitmapDescriptor(): BitmapDescriptor{
+        val width = resources.getDimensionPixelSize(R.dimen.marker_size)
+        val height = width
+        val bitmap = AppCompatResources.getDrawable(this, R.drawable.ic_store)?.toBitmap(
+            width,
+            height
+        )
+        if(bitmap!=null){
+            return BitmapDescriptorFactory.fromBitmap(bitmap)
+        }else{
+            return BitmapDescriptorFactory.defaultMarker()
+        }
     }
 
     private fun getLocationPermission() {
@@ -143,26 +202,33 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
          * device. The result of the permission request is handled by a callback,
          * onRequestPermissionsResult.
          */
-        if (ContextCompat.checkSelfPermission(this.applicationContext,
-                Manifest.permission.ACCESS_FINE_LOCATION)
+        if (ContextCompat.checkSelfPermission(
+                this.applicationContext,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
             == PackageManager.PERMISSION_GRANTED) {
             locationPermissionGranted = true
         } else {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION)
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION
+            )
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int,
-                                            permissions: Array<String>,
-                                            grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
         locationPermissionGranted = false
         when (requestCode) {
             PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION -> {
 
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.isNotEmpty() &&
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED
+                ) {
                     locationPermissionGranted = true
                 }
             }
@@ -203,21 +269,31 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                         // Set the map's camera position to the current location of the device.
                         lastKnownLocation = task.result
                         if (lastKnownLocation != null) {
-                            currentLatLng = LatLng(lastKnownLocation!!.latitude,
-                                    lastKnownLocation!!.longitude)
-                            mMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                                currentLatLng, DEFAULT_ZOOM.toFloat()))
-                            mMap?.addMarker(MarkerOptions()
+                            currentLatLng = LatLng(
+                                lastKnownLocation!!.latitude,
+                                lastKnownLocation!!.longitude
+                            )
+                            mMap?.moveCamera(
+                                CameraUpdateFactory.newLatLngZoom(
+                                    currentLatLng, DEFAULT_ZOOM.toFloat()
+                                )
+                            )
+                            currentMarker = mMap?.addMarker(
+                                MarkerOptions()
                                     .draggable(true)
-                                    .title("Select your location")
-                                    .position(currentLatLng!!))
+                                    .title("Drag and drop")
+                                    .snippet("Drag and drop")
+                                    .position(currentLatLng!!)
+                            )
                         }
                     } else {
                         Log.d(TAG, "Current location is null. Using defaults.")
                         Log.e(TAG, "Exception: %s", task.exception)
 
-                        mMap?.moveCamera(CameraUpdateFactory
-                            .newLatLngZoom(defaultLocation, DEFAULT_ZOOM.toFloat()))
+                        mMap?.moveCamera(
+                            CameraUpdateFactory
+                                .newLatLngZoom(defaultLocation, DEFAULT_ZOOM.toFloat())
+                        )
                         mMap?.uiSettings?.isMyLocationButtonEnabled = false
                     }
                 }
@@ -275,16 +351,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 } else {
                     Log.e(TAG, "Exception: %s", task.exception)
                 }
+                getDeviceLocation()
             }
         } else {
             // The user has not granted permission.
             Log.i(TAG, "The user did not grant location permission.")
-
             // Add a default marker, because the user hasn't selected a place.
-            mMap?.addMarker(MarkerOptions()
-                .title(getString(R.string.default_info_title))
-                .position(defaultLocation)
-                .snippet(getString(R.string.default_info_snippet)))
+            mMap?.addMarker(
+                MarkerOptions()
+                    .title(getString(R.string.default_info_title))
+                    .position(defaultLocation)
+                    .snippet(getString(R.string.default_info_snippet))
+            )
 
             // Prompt the user for permission.
             getLocationPermission()
@@ -305,14 +383,20 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
             // Add a marker for the selected place, with an info window
             // showing information about that place.
-            mMap?.addMarker(MarkerOptions()
-                .title(likelyPlaceNames[which])
-                .position(markerLatLng!!)
-                .snippet(markerSnippet))
+            mMap?.addMarker(
+                MarkerOptions()
+                    .title(likelyPlaceNames[which])
+                    .position(markerLatLng!!)
+                    .snippet(markerSnippet)
+            )
 
             // Position the map's camera at the location of the marker.
-            mMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(markerLatLng,
-                DEFAULT_ZOOM.toFloat()))
+            mMap?.moveCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    markerLatLng,
+                    DEFAULT_ZOOM.toFloat()
+                )
+            )
         }
 
         // Display the dialog.
@@ -336,7 +420,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         }
         super.onSaveInstanceState(outState)
     }
-
 
     companion object {
         private val TAG = MainActivity::class.java.simpleName
