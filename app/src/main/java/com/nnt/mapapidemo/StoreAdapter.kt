@@ -29,7 +29,7 @@ class StoreAdapter(private val stores: List<Store>, private val onItemClick: (st
     }
 
     override fun getItemCount(): Int {
-        return filterStores.size
+        return if(filterStores.size>=MAX_SHOWING_STORE) MAX_SHOWING_STORE else filterStores.size
     }
 
     fun filter(keyword: String): Boolean{
@@ -40,5 +40,9 @@ class StoreAdapter(private val stores: List<Store>, private val onItemClick: (st
         }
         notifyDataSetChanged()
         return filterStores.isNotEmpty()
+    }
+
+    companion object {
+        private const val MAX_SHOWING_STORE = 5
     }
 }
