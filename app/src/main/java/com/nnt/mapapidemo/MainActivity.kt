@@ -551,6 +551,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, CoroutineScope {
         KeyboardVisibilityEvent.setEventListener(this, object : KeyboardVisibilityEventListener {
             override fun onVisibilityChanged(isOpen: Boolean) {
                    binding.btnConfirm.isVisible = !isOpen
+                   binding.rvStore.isVisible = isOpen && binding.edtSearch.text.isNotEmpty()
             }
         })
     }
