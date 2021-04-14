@@ -154,6 +154,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 }
             return@setOnMarkerClickListener true
         }
+        mMap?.setOnMyLocationButtonClickListener {
+            currentMarker?.remove()
+            getDeviceLocation()
+            return@setOnMyLocationButtonClickListener true
+        }
 
     }
     private fun showStoreInfo(store: Store){
@@ -265,7 +270,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                                 lastKnownLocation!!.latitude,
                                 lastKnownLocation!!.longitude
                             )
-                            mMap?.moveCamera(
+                            mMap?.animateCamera(
                                 CameraUpdateFactory.newLatLngZoom(
                                     currentLatLng, DEFAULT_ZOOM.toFloat()
                                 )
